@@ -1,0 +1,5 @@
+.vscode
+*/.vscode
+!*/*.h
+!*/*.cpp
+!*/*.hpp
