@@ -7,9 +7,6 @@
 
 namespace shochu
 {
-template<int>
-struct uid {};
-
 namespace toStrWapper {
     constexpr unsigned int stringLeng = 32;
     inline std::string toStr(bool i) {
@@ -52,16 +49,57 @@ namespace fromStrWapper {
     }
 }; //fromStrWapper
 
+template<int>
+struct uid {};
+
+template<int N,typename outClass>
+class AppendChildToRoot {
+public:
+    inline tinyxml2::XMLElement* operator()(outClass* cls,tinyxml2::XMLElement* root) const {
+        uid<N> thisUid;
+        tinyxml2::XMLElement* ret = cls->doc.NewElement(cls->getName(thisUid));
+        ret->SetAttribute("type", cls->getType(thisUid));
+        ret->SetAttribute("uid", N);
+        tinyxml2::XMLText* text = cls->doc.NewText(toStrWapper::toStr(cls->getValue(thisUid)).c_str());
+        ret->InsertFirstChild(text);
+        root->InsertFirstChild(ret);
+        AppendChildToRoot<N - 1, outClass> nextSibling;
+        nextSibling(cls, root);
+        return ret;
+    }
+};
+template<typename outClass>
+class AppendChildToRoot<0, outClass> {
+public:
+    tinyxml2::XMLElement* operator()(outClass* cls, tinyxml2::XMLElement* root) {
+        return nullptr;
+    }
+}; 
+
+template<int N,typename outClass>
+class GetChildFromRoot {
+public:
+    inline void operator()(outClass* cls, const tinyxml2::XMLElement* root){
+        uid<N> thisUid; 
+        cls->setValue(thisUid, std::string(root->FirstChildElement(cls->getName(thisUid))->GetText()));
+        GetChildFromRoot<N - 1, outClass> t; 
+        t(cls, root);
+    }
+}; 
+template<typename outClass>
+class GetChildFromRoot<0, outClass> {
+public:
+    inline void operator()(outClass* cls, const tinyxml2::XMLElement* root) {
+        return; 
+    }
+};
+
 #define RegisterStruct_Begin(name)\
 struct name{\
 private:\
     using outClass = name;\
     enum { beg_menber = __COUNTER__ };\
-    tinyxml2::XMLDocument doc;\
-    template<int N>\
-    class LoopAppendChild;\
-    template<int N>\
-    class LoopGetChild;
+    tinyxml2::XMLDocument doc;
 
 #define RegisterStruct_Menber(type,name)\
 public:\
@@ -75,51 +113,12 @@ private:\
     void setValue(uid<beg_##name>,const std::string& valStr){\
         fromStrWapper::fromStr(valStr,this->name);\
     }\
-    friend class LoopAppendChild<beg_##name>;\
-    friend class LoopGetChild<beg_##name>;
+    friend class AppendChildToRoot<beg_##name,outClass>;\
+    friend class GetChildFromRoot<beg_##name,outClass>;
 
 #define RegisterStruct_End(name)\
 private:\
     const static size_t menberSize = __COUNTER__ - 1;\
-    template<int N>\
-    class LoopAppendChild {\
-        public:\
-        inline tinyxml2::XMLElement* toXMLElem(outClass* cls,tinyxml2::XMLDocument* doc,tinyxml2::XMLElement* root) {\
-            uid<N> thisUid;\
-            tinyxml2::XMLElement* ret = doc->NewElement(cls->getName(thisUid));\
-            ret->SetAttribute("type",cls->getType(thisUid));\
-            ret->SetAttribute("uid",N);\
-            tinyxml2::XMLText* text = doc->NewText(toStrWapper::toStr(cls->getValue(thisUid)).c_str());\
-            ret->InsertFirstChild(text);\
-            root->InsertFirstChild(ret);\
-            LoopAppendChild<N-1> nextSibling;\
-            nextSibling.toXMLElem(cls,doc,root);\
-            return ret;\
-        }\
-    };\
-    template<>\
-    class LoopAppendChild<0>{\
-        public:\
-        inline tinyxml2::XMLElement* toXMLElem(outClass* cls,tinyxml2::XMLDocument* doc,tinyxml2::XMLElement* root) {\
-            return nullptr;\
-        }\
-    };\
-    template<int N>\
-    class LoopGetChild{\
-        public:\
-        inline void getChdildValue(outClass* cls,const tinyxml2::XMLElement* root){\
-            uid<N> thisUid; \
-            cls->setValue(thisUid,std::string(root->FirstChildElement(cls->getName(thisUid))->GetText()));\
-            LoopGetChild<N-1>().getChdildValue(cls,root);\
-        }\
-    };\
-    template<>\
-    class LoopGetChild<0>{\
-        public:\
-        inline void getChdildValue(outClass* cls,const tinyxml2::XMLElement* root){\
-            return;\
-        }\
-    };\
 public:\
     name() = default;\
     name(const name& rhs){\
@@ -138,10 +137,10 @@ public:\
         return *this;\
     }\
     void saveToFile(const char* filename){\
-        LoopAppendChild<menberSize> t;\
+        AppendChildToRoot<menberSize,outClass> t;\
         this->doc.Clear();\
         tinyxml2::XMLElement* root = doc.NewElement(#name);\
-        t.toXMLElem(this,&doc,root);\
+        t(this,root);\
         this->doc.InsertFirstChild(root);\
         this->doc.SaveFile(filename);\
     }\
@@ -151,8 +150,8 @@ public:\
     void loadFromFile(const char* filename){\
         this->doc.Clear();\
         this->doc.LoadFile(filename);\
-        LoopGetChild<outClass::menberSize> t;\
-        t.getChdildValue(this,doc.FirstChild()->ToElement());\
+        GetChildFromRoot<outClass::menberSize,outClass> t;\
+        t(this,doc.FirstChild()->ToElement());\
     }\
     void loadFromFile(const std::string& f){\
         this->loadFromFile(f.c_str());\
