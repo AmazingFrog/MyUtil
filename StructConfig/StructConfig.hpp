@@ -52,46 +52,96 @@ namespace fromStrWapper {
 template<int>
 struct uid {};
 
+template<typename T,typename... Args>
+struct isBase{};
+template<typename T>
+struct isBase<T> {
+    using type = std::false_type;
+    static constexpr bool value = type::value;
+};
+template<typename T,typename thisType,typename... Args>
+struct isBase<T,thisType,Args...> {
+    using type = typename std::conditional<std::is_same<T, thisType>::value, std::true_type, typename isBase<T, Args...>::type >::type;
+    static constexpr bool value = type::value;
+};
+#define IsBaseType(type) isBase<type,int,double,float,bool,std::string>::value
+
+/**
+    从 nowElem 构造 val
+*/
+template<bool cond,typename T>
+struct ChooseSetValueFunc {};
+template<typename T>
+struct ChooseSetValueFunc<true,T> {
+    inline static void setValue(const tinyxml2::XMLElement* nowElem,T& val) {
+        fromStrWapper::fromStr(std::string(nowElem->GetText()), val);
+    }
+};
+template<typename T>
+struct ChooseSetValueFunc<false,T> {
+    inline static void setValue(const tinyxml2::XMLElement* nowElem, T& val) {
+        val.fromXMLElement(nowElem);
+    }
+};
+
+/**
+    从 doc 创建xmlelement，xmlelement由 cls 和 thisUid 创建
+*/
+template<bool cond, int N,typename outClass>
+struct ChooseGetValueFunc {};
+template<int N, typename outClass>
+struct ChooseGetValueFunc<true, N, outClass> {
+    inline static tinyxml2::XMLElement* getXMLFromVal(tinyxml2::XMLDocument* doc,uid<N> thisUid,outClass* cls) {
+        tinyxml2::XMLElement* nowElem = doc->NewElement(cls->getName(thisUid));
+        nowElem->SetAttribute("type", cls->getType(thisUid));
+
+        tinyxml2::XMLText* text = doc->NewText(toStrWapper::toStr(cls->getValue(thisUid)).c_str());
+        nowElem->InsertEndChild(text);
+
+        return nowElem;
+    }
+};
+template<int N, typename outClass>
+struct ChooseGetValueFunc<false, N, outClass> {
+    inline static tinyxml2::XMLElement* getXMLFromVal(tinyxml2::XMLDocument* doc, uid<N> thisUid, outClass* cls) {
+        return cls->getValue(thisUid).toXMLElement(doc);
+    }
+};
+
+/**
+    循环展开添加一个成员到root
+*/
 template<int N,typename outClass>
-class AppendChildToRoot {
-public:
-    inline tinyxml2::XMLElement* operator()(outClass* cls,tinyxml2::XMLElement* root) const {
+struct AppendChildToRoot {
+    inline static void set(outClass* cls,tinyxml2::XMLDocument* doc, tinyxml2::XMLElement* root) {
         uid<N> thisUid;
-        tinyxml2::XMLElement* ret = cls->doc.NewElement(cls->getName(thisUid));
-        ret->SetAttribute("type", cls->getType(thisUid));
-        ret->SetAttribute("uid", N);
-        tinyxml2::XMLText* text = cls->doc.NewText(toStrWapper::toStr(cls->getValue(thisUid)).c_str());
-        ret->InsertFirstChild(text);
-        root->InsertFirstChild(ret);
-        AppendChildToRoot<N - 1, outClass> nextSibling;
-        nextSibling(cls, root);
-        return ret;
+        tinyxml2::XMLElement* nowElem = cls->getXMLElementFromValue(thisUid, doc);
+        nowElem->SetAttribute("type", cls->getType(thisUid));
+        nowElem->SetAttribute("uid", N);
+        root->InsertFirstChild(nowElem);
+        AppendChildToRoot<N - 1, outClass>::set(cls, doc, root);
     }
 };
 template<typename outClass>
-class AppendChildToRoot<0, outClass> {
-public:
-    tinyxml2::XMLElement* operator()(outClass* cls, tinyxml2::XMLElement* root) {
-        return nullptr;
-    }
+struct AppendChildToRoot<0, outClass> {
+    inline static void set(outClass* cls,tinyxml2::XMLDocument* doc, tinyxml2::XMLElement* root) {}
 }; 
 
+/**
+    循环展开从root中获取一个element用来初始化成员
+*/
 template<int N,typename outClass>
-class GetChildFromRoot {
-public:
-    inline void operator()(outClass* cls, const tinyxml2::XMLElement* root){
-        uid<N> thisUid; 
-        cls->setValue(thisUid, std::string(root->FirstChildElement(cls->getName(thisUid))->GetText()));
-        GetChildFromRoot<N - 1, outClass> t; 
-        t(cls, root);
+struct GetChildFromRoot {
+    inline static void get(outClass* cls, const tinyxml2::XMLElement* root){
+        uid<N> thisUid;
+        const tinyxml2::XMLElement* nowElem = root->FirstChildElement(cls->getName(thisUid));
+        cls->setValueByXMLElement(thisUid, nowElem);
+        GetChildFromRoot<N - 1, outClass>::get(cls,root); 
     }
 }; 
 template<typename outClass>
-class GetChildFromRoot<0, outClass> {
-public:
-    inline void operator()(outClass* cls, const tinyxml2::XMLElement* root) {
-        return; 
-    }
+struct GetChildFromRoot<0, outClass> {
+    inline static void get(outClass* cls, const tinyxml2::XMLElement* root) {}
 };
 
 #define RegisterStruct_Begin(name)\
@@ -106,19 +156,27 @@ public:\
     type name;\
 private:\
     enum { beg_##name = __COUNTER__ - beg_menber};\
-    constexpr auto getName(uid<beg_##name>){return #name;}\
-    constexpr auto getType(uid<beg_##name>) {return #type;}\
+\
+    constexpr auto getName(uid<beg_##name>){return (IsBaseType(type))?#name:#type;}\
+    constexpr auto getType(uid<beg_##name>) {return (IsBaseType(type))?#type:"struct";}\
     auto& getValue(uid<beg_##name>) {return name;}\
     const auto& getValue(uid<beg_##name>) const {return name;}\
-    void setValue(uid<beg_##name>,const std::string& valStr){\
-        fromStrWapper::fromStr(valStr,this->name);\
+\
+    void setValueByXMLElement(uid<beg_##name> thisUid,const tinyxml2::XMLElement* nowElem){\
+        ChooseSetValueFunc<IsBaseType(type),type>::setValue(nowElem,this->name);\
     }\
-    friend class AppendChildToRoot<beg_##name,outClass>;\
-    friend class GetChildFromRoot<beg_##name,outClass>;
+    tinyxml2::XMLElement* getXMLElementFromValue(uid<beg_##name> thisUid,tinyxml2::XMLDocument* doc){\
+        return ChooseGetValueFunc<IsBaseType(type),(beg_##name),outClass>::getXMLFromVal(doc,thisUid,this);\
+    }\
+\
+    friend struct AppendChildToRoot<beg_##name,outClass>;\
+    friend struct GetChildFromRoot<beg_##name,outClass>;\
+    friend struct ChooseSetValueFunc<IsBaseType(type),type>;\
+    friend struct ChooseGetValueFunc<IsBaseType(type),beg_##name,outClass>;
 
 #define RegisterStruct_End(name)\
 private:\
-    const static size_t menberSize = __COUNTER__ - 1;\
+    const static size_t menberSize = __COUNTER__ - beg_menber - 1;\
 public:\
     name() = default;\
     name(const name& rhs){\
@@ -126,22 +184,31 @@ public:\
             return;\
         }\
         outClass* r = const_cast<outClass*>(&rhs);\
-        this->doc.DeepClone(&(r->doc));\
+        r->doc.DeepCopy(&(this->doc));\
+        this->fromXMLElement(this->doc.FirstChild()->ToElement());\
     }\
     name& operator=(const name& rhs){\
         if(this == &rhs){\
             return *this;\
         }\
         outClass* r = const_cast<outClass*>(&rhs);\
-        this->doc.DeepClone(&(r->doc));\
+        r->doc.DeepCopy(&(this->doc));\
+        this->fromXMLElement(this->doc.FirstChild()->ToElement());\
         return *this;\
     }\
+    inline tinyxml2::XMLElement* toXMLElement(tinyxml2::XMLDocument* document){\
+        tinyxml2::XMLElement* root = document->NewElement(#name);\
+        AppendChildToRoot<menberSize,outClass>::set(this,document,root);\
+        return root;\
+}\
+    inline void fromXMLElement(const tinyxml2::XMLElement* root){\
+        GetChildFromRoot<outClass::menberSize,outClass>::get(this,root);\
+    }\
+\
     void saveToFile(const char* filename){\
-        AppendChildToRoot<menberSize,outClass> t;\
         this->doc.Clear();\
-        tinyxml2::XMLElement* root = doc.NewElement(#name);\
-        t(this,root);\
-        this->doc.InsertFirstChild(root);\
+        tinyxml2::XMLElement* root = this->toXMLElement(&(this->doc));\
+        this->doc.InsertEndChild(root);\
         this->doc.SaveFile(filename);\
     }\
     void saveToFile(const std::string& f){\
@@ -150,8 +217,7 @@ public:\
     void loadFromFile(const char* filename){\
         this->doc.Clear();\
         this->doc.LoadFile(filename);\
-        GetChildFromRoot<outClass::menberSize,outClass> t;\
-        t(this,doc.FirstChild()->ToElement());\
+        this->fromXMLElement(this->doc.FirstChild()->ToElement());\
     }\
     void loadFromFile(const std::string& f){\
         this->loadFromFile(f.c_str());\
