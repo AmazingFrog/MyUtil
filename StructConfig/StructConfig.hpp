@@ -67,7 +67,7 @@ struct isBase<T,thisType,Args...> {
 #define IsBaseType(type) isBase<type,int,double,float,bool,std::string>::value
 
 /**
-    ´Ó nowElem ¹¹Ôì val
+    ä» nowElem æ„é€  val
 */
 template<bool cond,typename T>
 struct ChooseSetValueFunc {};
@@ -85,7 +85,7 @@ struct ChooseSetValueFunc<false,T> {
 };
 
 /**
-    ´Ó doc ´´½¨xmlelement£¬xmlelementÓÉ cls ºÍ thisUid ´´½¨
+    ä» doc åˆ›å»ºxmlelementï¼Œxmlelementç”± cls å’Œ thisUid åˆ›å»º
 */
 template<bool cond, int N,typename outClass>
 struct ChooseGetValueFunc {};
@@ -104,12 +104,12 @@ struct ChooseGetValueFunc<true, N, outClass> {
 template<int N, typename outClass>
 struct ChooseGetValueFunc<false, N, outClass> {
     inline static tinyxml2::XMLElement* getXMLFromVal(tinyxml2::XMLDocument* doc, uid<N> thisUid, outClass* cls) {
-        return cls->getValue(thisUid).toXMLElement(doc);
+        return cls->getValue(thisUid).toXMLElement(doc,true,cls->getName(thisUid));
     }
 };
 
 /**
-    Ñ­»·Õ¹¿ªÌí¼ÓÒ»¸ö³ÉÔ±µ½root
+    å¾ªç¯å±•å¼€æ·»åŠ ä¸€ä¸ªæˆå‘˜åˆ°root
 */
 template<int N,typename outClass>
 struct AppendChildToRoot {
@@ -128,7 +128,7 @@ struct AppendChildToRoot<0, outClass> {
 }; 
 
 /**
-    Ñ­»·Õ¹¿ª´ÓrootÖĞ»ñÈ¡Ò»¸öelementÓÃÀ´³õÊ¼»¯³ÉÔ±
+    å¾ªç¯å±•å¼€ä»rootä¸­è·å–ä¸€ä¸ªelementç”¨æ¥åˆå§‹åŒ–æˆå‘˜
 */
 template<int N,typename outClass>
 struct GetChildFromRoot {
@@ -157,7 +157,7 @@ public:\
 private:\
     enum { beg_##name = __COUNTER__ - beg_menber};\
 \
-    constexpr auto getName(uid<beg_##name>){return (IsBaseType(type))?#name:#type;}\
+    constexpr auto getName(uid<beg_##name>){return #name;}\
     constexpr auto getType(uid<beg_##name>) {return (IsBaseType(type))?#type:"struct";}\
     auto& getValue(uid<beg_##name>) {return name;}\
     const auto& getValue(uid<beg_##name>) const {return name;}\
@@ -196,18 +196,17 @@ public:\
         this->fromXMLElement(this->doc.FirstChild()->ToElement());\
         return *this;\
     }\
-    inline tinyxml2::XMLElement* toXMLElement(tinyxml2::XMLDocument* document){\
-        tinyxml2::XMLElement* root = document->NewElement(#name);\
+    inline tinyxml2::XMLElement* toXMLElement(tinyxml2::XMLDocument* document,bool isMenber,const char* menberName){\
+        tinyxml2::XMLElement* root = document->NewElement(isMenber?menberName:#name);\
         AppendChildToRoot<menberSize,outClass>::set(this,document,root);\
         return root;\
-}\
+    }\
     inline void fromXMLElement(const tinyxml2::XMLElement* root){\
         GetChildFromRoot<outClass::menberSize,outClass>::get(this,root);\
     }\
-\
     void saveToFile(const char* filename){\
         this->doc.Clear();\
-        tinyxml2::XMLElement* root = this->toXMLElement(&(this->doc));\
+        tinyxml2::XMLElement* root = this->toXMLElement(&(this->doc),false,"");\
         this->doc.InsertEndChild(root);\
         this->doc.SaveFile(filename);\
     }\
