@@ -64,7 +64,7 @@ struct isBase<T,thisType,Args...> {
     using type = typename std::conditional<std::is_same<T, thisType>::value, std::true_type, typename isBase<T, Args...>::type >::type;
     static constexpr bool value = type::value;
 };
-#define IsBaseType(type) isBase<type,int,double,float,bool,std::string>::value
+#define IsBaseType(type) shochu::isBase<type,int,double,float,bool,std::string>::value
 
 /**
     从 nowElem 构造 val
@@ -74,7 +74,7 @@ struct ChooseSetValueFunc {};
 template<typename T>
 struct ChooseSetValueFunc<true,T> {
     inline static void setValue(const tinyxml2::XMLElement* nowElem,T& val) {
-        fromStrWapper::fromStr(std::string(nowElem->GetText()), val);
+        shochu::fromStrWapper::fromStr(std::string(nowElem->GetText()), val);
     }
 };
 template<typename T>
@@ -91,7 +91,7 @@ template<bool cond, int N,typename outClass>
 struct ChooseGetValueFunc {};
 template<int N, typename outClass>
 struct ChooseGetValueFunc<true, N, outClass> {
-    inline static tinyxml2::XMLElement* getXMLFromVal(tinyxml2::XMLDocument* doc,uid<N> thisUid,outClass* cls) {
+    inline static tinyxml2::XMLElement* getXMLFromVal(tinyxml2::XMLDocument* doc, shochu::uid<N> thisUid,outClass* cls) {
         tinyxml2::XMLElement* nowElem = doc->NewElement(cls->getName(thisUid));
         nowElem->SetAttribute("type", cls->getType(thisUid));
 
@@ -103,7 +103,7 @@ struct ChooseGetValueFunc<true, N, outClass> {
 };
 template<int N, typename outClass>
 struct ChooseGetValueFunc<false, N, outClass> {
-    inline static tinyxml2::XMLElement* getXMLFromVal(tinyxml2::XMLDocument* doc, uid<N> thisUid, outClass* cls) {
+    inline static tinyxml2::XMLElement* getXMLFromVal(tinyxml2::XMLDocument* doc, shochu::uid<N> thisUid, outClass* cls) {
         return cls->getValue(thisUid).toXMLElement(doc,true,cls->getName(thisUid));
     }
 };
@@ -114,12 +114,12 @@ struct ChooseGetValueFunc<false, N, outClass> {
 template<int N,typename outClass>
 struct AppendChildToRoot {
     inline static void set(outClass* cls,tinyxml2::XMLDocument* doc, tinyxml2::XMLElement* root) {
-        uid<N> thisUid;
+        shochu::uid<N> thisUid;
         tinyxml2::XMLElement* nowElem = cls->getXMLElementFromValue(thisUid, doc);
         nowElem->SetAttribute("type", cls->getType(thisUid));
         nowElem->SetAttribute("uid", N);
         root->InsertFirstChild(nowElem);
-        AppendChildToRoot<N - 1, outClass>::set(cls, doc, root);
+        shochu::AppendChildToRoot<N - 1, outClass>::set(cls, doc, root);
     }
 };
 template<typename outClass>
@@ -133,10 +133,10 @@ struct AppendChildToRoot<0, outClass> {
 template<int N,typename outClass>
 struct GetChildFromRoot {
     inline static void get(outClass* cls, const tinyxml2::XMLElement* root){
-        uid<N> thisUid;
+        shochu::uid<N> thisUid;
         const tinyxml2::XMLElement* nowElem = root->FirstChildElement(cls->getName(thisUid));
         cls->setValueByXMLElement(thisUid, nowElem);
-        GetChildFromRoot<N - 1, outClass>::get(cls,root); 
+        shochu::GetChildFromRoot<N - 1, outClass>::get(cls,root);
     }
 }; 
 template<typename outClass>
@@ -157,22 +157,22 @@ public:\
 private:\
     enum { beg_##name = __COUNTER__ - beg_menber};\
 \
-    constexpr auto getName(uid<beg_##name>){return #name;}\
-    constexpr auto getType(uid<beg_##name>) {return (IsBaseType(type))?#type:"struct:"#type;}\
-    auto& getValue(uid<beg_##name>) {return name;}\
-    const auto& getValue(uid<beg_##name>) const {return name;}\
+    constexpr auto getName(shochu::uid<beg_##name>){return #name;}\
+    constexpr auto getType(shochu::uid<beg_##name>) {return (IsBaseType(type))?#type:"struct:"#type;}\
+    auto& getValue(shochu::uid<beg_##name>) {return name;}\
+    const auto& getValue(shochu::uid<beg_##name>) const {return name;}\
 \
-    void setValueByXMLElement(uid<beg_##name> thisUid,const tinyxml2::XMLElement* nowElem){\
-        ChooseSetValueFunc<IsBaseType(type),type>::setValue(nowElem,this->name);\
+    void setValueByXMLElement(shochu::uid<beg_##name> thisUid,const tinyxml2::XMLElement* nowElem){\
+        shochu::ChooseSetValueFunc<IsBaseType(type),type>::setValue(nowElem,this->name);\
     }\
-    tinyxml2::XMLElement* getXMLElementFromValue(uid<beg_##name> thisUid,tinyxml2::XMLDocument* doc){\
-        return ChooseGetValueFunc<IsBaseType(type),(beg_##name),outClass>::getXMLFromVal(doc,thisUid,this);\
+    tinyxml2::XMLElement* getXMLElementFromValue(shochu::uid<beg_##name> thisUid,tinyxml2::XMLDocument* doc){\
+        return shochu::ChooseGetValueFunc<IsBaseType(type),(beg_##name),outClass>::getXMLFromVal(doc,thisUid,this);\
     }\
 \
-    friend struct AppendChildToRoot<beg_##name,outClass>;\
-    friend struct GetChildFromRoot<beg_##name,outClass>;\
-    friend struct ChooseSetValueFunc<IsBaseType(type),type>;\
-    friend struct ChooseGetValueFunc<IsBaseType(type),beg_##name,outClass>;
+    friend struct shochu::AppendChildToRoot<beg_##name,outClass>;\
+    friend struct shochu::GetChildFromRoot<beg_##name,outClass>;\
+    friend struct shochu::ChooseSetValueFunc<IsBaseType(type),type>;\
+    friend struct shochu::ChooseGetValueFunc<IsBaseType(type),beg_##name,outClass>;
 
 #define RegisterStruct_End(name)\
 private:\
@@ -198,11 +198,11 @@ public:\
     }\
     inline tinyxml2::XMLElement* toXMLElement(tinyxml2::XMLDocument* document,bool isMenber,const char* menberName){\
         tinyxml2::XMLElement* root = document->NewElement(isMenber?menberName:#name);\
-        AppendChildToRoot<menberSize,outClass>::set(this,document,root);\
+        shochu::AppendChildToRoot<menberSize,outClass>::set(this,document,root);\
         return root;\
     }\
     inline void fromXMLElement(const tinyxml2::XMLElement* root){\
-        GetChildFromRoot<outClass::menberSize,outClass>::get(this,root);\
+        shochu::GetChildFromRoot<outClass::menberSize,outClass>::get(this,root);\
     }\
     void saveToFile(const char* filename){\
         this->doc.Clear();\
