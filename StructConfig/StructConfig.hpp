@@ -158,7 +158,7 @@ private:\
     enum { beg_##name = __COUNTER__ - beg_menber};\
 \
     constexpr auto getName(uid<beg_##name>){return #name;}\
-    constexpr auto getType(uid<beg_##name>) {return (IsBaseType(type))?#type:"struct";}\
+    constexpr auto getType(uid<beg_##name>) {return (IsBaseType(type))?#type:"struct:"#type;}\
     auto& getValue(uid<beg_##name>) {return name;}\
     const auto& getValue(uid<beg_##name>) const {return name;}\
 \
