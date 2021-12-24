@@ -261,6 +261,7 @@ public:\
 class XMLFactory : public shochu::SCNodeFactoryInterface {
 public:
     std::string serialization(const shochu::SCNode& root) {
+        doc.Clear();
         auto r = this->doc.NewElement(root.key().c_str());
         for(auto i=root.childBegin();i!=root.childEnd();++i) {
             this->serializationHelper(i->second, r);
@@ -272,6 +273,7 @@ public:
     }
 
     shochu::SCNode unserialization(const std::string& str) {
+        doc.Clear();
         doc.Parse(str.c_str());
         auto root = doc.RootElement();
 
