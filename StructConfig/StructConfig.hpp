@@ -53,28 +53,28 @@ public:
     SCNode() = default;
     void key(const std::string& k) { this->k = k; }
     void val(const std::string& v) { this->v = v; }
-    void appendChild(const SCNode& child) { std::string idx = child.attributes.at("uid"); this->childs.emplace(idx, child); }
-    void appendChild(SCNode&& child) { std::string idx = child.attributes.at("uid"); this->childs.emplace(std::move(idx), child); }
+    void appendChild(const SCNode& child) { this->checkChilds(); std::string idx = child.attributes.at("uid"); this->childs->emplace(idx, child); }
+    void appendChild(SCNode&& child) { this->checkChilds(); std::string idx = child.attributes.at("uid"); this->childs->emplace(idx, child); }
     void setAttr(const std::string& k, const std::string& v) { this->attributes[k] = v; }
     void setAttr(std::string&& k, std::string&& v) { this->attributes[k] = v; }
-    void isBase(bool i) { this->isB = i; }
+    void isBase(bool i) { this->isB = i; this->checkChilds(); }
 
-    typedef std::unordered_map<std::string, std::string>::const_iterator AttrIter;
-    typedef std::unordered_map<std::string, shochu::SCNode>::const_iterator ChildIter;
     inline bool isBase() const { return this->isB; }
     const std::string& key() const { return this->k; }
     const std::string& val() const { return this->v; }
-    AttrIter attrBegin() const { return this->attributes.cbegin(); }
-    AttrIter attrEnd() const { return this->attributes.cend(); }
-    ChildIter childBegin() const { return this->childs.cbegin(); }
-    ChildIter childEnd() const { return this->childs.cend(); }
+    auto attrBegin() const { return this->attributes.cbegin(); }
+    auto attrEnd() const { return this->attributes.cend(); }
+    auto childBegin() const { this->checkChilds(); return this->childs->cbegin(); }
+    auto childEnd() const { this->checkChilds(); return this->childs->cend(); }
 
 private:
     std::string k;
     std::string v;
-    std::unordered_map<std::string, shochu::SCNode> childs;
+    std::shared_ptr<std::unordered_map<std::string, shochu::SCNode>> childs;
     std::unordered_map<std::string, std::string> attributes;
     bool isB;
+
+    void checkChilds() const { auto cls = const_cast<SCNode*>(this); if(!cls->childs) cls->childs.reset(new std::unordered_map<std::string, shochu::SCNode>); }
 
     template<int N, typename T>
     friend struct GetChildFromRoot;
@@ -148,7 +148,7 @@ template<int N, typename outClass>
 struct AppendChildToRoot {
     inline static void set(outClass* cls, shochu::SCNode& root) {
         shochu::uid<N> thisUid;
-        root.appendChild(std::move(cls->val2SCNode(thisUid)));
+        root.appendChild(cls->val2SCNode(thisUid));
         shochu::AppendChildToRoot<N - 1, outClass>::set(cls, root);
     }
 };
@@ -163,15 +163,14 @@ struct AppendChildToRoot<0, outClass> {
 template<int N, typename outClass>
 struct GetChildFromRoot {
     inline static void get(outClass* cls, const SCNode& root) {
-        shochu::uid<N> thisUid;
         auto idx = shochu::toStrWapper::toStr(N);
-        cls->SCNode2val(thisUid, root.childs.at(idx));
+        cls->SCNode2val(shochu::uid<N>(), root.childs->at(idx));
         shochu::GetChildFromRoot<N - 1, outClass>::get(cls, root);
     }
 }; 
 template<typename outClass>
 struct GetChildFromRoot<0, outClass> {
-    inline static void get(outClass* cls, const SCNode& root) {}
+    inline static void get(outClass* , const SCNode& ) {}
 };
 
 // #define COMMENT(str) /\
@@ -332,7 +331,7 @@ private:
             ret.isBase(false);
             auto child = r->FirstChildElement();
             while(child) {
-                ret.appendChild(std::move(this->unserializationHelper(child)));
+                ret.appendChild(this->unserializationHelper(child));
                 child = child->NextSiblingElement();
             }
         }
