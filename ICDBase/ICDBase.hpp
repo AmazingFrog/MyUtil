@@ -8,8 +8,7 @@
 #include <functional>
 #include <type_traits>
 
-#include <QtGlobal>
-
+// #include <QtGlobal>
 
 // 对不同平台 counter 宏进行统一
 #ifdef Q_OS_WIN
@@ -40,23 +39,30 @@ struct __my_make_index_sequence<0, M...> : public __my_index_sequence<M...> {};
 template<bool, typename dstType>
 struct __copyValue
 {
-    static inline size_t copy(const uint8_t*, dstType&) { return 0; }
-    static inline size_t copy(const uint8_t*, dstType*, size_t) { return 0; }
+    static inline size_t copy(const uint8_t*, dstType&, size_t) { return 0; }
+    static inline size_t copy(const uint8_t*, dstType*, size_t, size_t) { return 0; }
 };
 // copyValue 偏特化
 // 如果是基本类型，直接赋值
 template<typename dstType>
 struct __copyValue<true, dstType>
 {
-    static inline size_t copy(const uint8_t* data, dstType& val)
+    static inline size_t copy(const uint8_t* data, dstType& val, size_t remainBytes)
     {
+        if(remainBytes < sizeof(dstType))
+        {
+            return 0;
+        }
         memcpy(&val, data, sizeof(dstType));
         return sizeof(dstType);
     }
-    static inline size_t copy(const uint8_t* data, dstType* val, size_t n)
+    static inline size_t copy(const uint8_t* data, dstType* val, size_t n, size_t remainBytes)
     {
-        auto beg = (const dstType*)data;
-        memcpy(val, beg, sizeof(dstType) * n);
+        if(remainBytes < sizeof(dstType) * n)
+        {
+            return 0;
+        }
+        memcpy(val, (const dstType*)data, sizeof(dstType) * n);
         return sizeof(dstType) * n;
     }
 };
@@ -65,18 +71,23 @@ struct __copyValue<true, dstType>
 template<typename dstType>
 struct __copyValue<false, dstType>
 {
-    static inline size_t copy(const uint8_t* data, dstType& val)
+    static inline size_t copy(const uint8_t* data, dstType& val, size_t remainBytes)
     {
-        return val.from(data);
+        return val.from(data, remainBytes);
     }
-    static inline size_t copy(const uint8_t* data, dstType* val, size_t n)
+    static inline size_t copy(const uint8_t* data, dstType* val, size_t n, size_t remainBytes)
     {
         size_t total = 0;
         for(size_t i=0;i<n;++i)
         {
-            size_t offset = (val + i)->from(data);
+            size_t offset = (val + i)->from(data, remainBytes);
+            if(!offset)
+            {
+                return 0;
+            }
             data += offset;
             total += offset;
+            remainBytes -= offset;
         }
         return total;
     }
@@ -88,39 +99,52 @@ struct __copyValue<false, dstType>
 template<bool, typename dstType>
 struct __pasteValue
 {
-    static inline size_t paste(void* data, dstType& val) { return 0; }
-    static inline size_t paste(void* data, dstType* val, size_t n) { return 0; }
+    static inline size_t paste(void*, dstType&, size_t) { return 0; }
+    static inline size_t paste(void*, dstType*, size_t, size_t) { return 0; }
 };
 template<typename dstType>
 struct __pasteValue<true, dstType>
 {
-    static inline size_t paste(void* data, dstType& val)
+    static inline size_t paste(void* data, dstType& val, size_t remainBytes)
     {
+        if(remainBytes < sizeof(dstType))
+        {
+            return 0;
+        }
         memcpy(data, &val, sizeof(dstType));
         return sizeof(dstType);
     }
-    static inline size_t paste(void* data, dstType* val, size_t n)
+    static inline size_t paste(void* data, dstType* val, size_t n, size_t remainBytes)
     {
-        memcpy(data, val, n * sizeof(dstType));
+        if(remainBytes < sizeof(dstType) * n)
+        {
+            return 0;
+        }
+        memcpy(data, val, sizeof(dstType) * n);
         return sizeof(dstType) * n;
     }
 };
 template<typename dstType>
 struct __pasteValue<false, dstType>
 {
-    static inline size_t paste(void* data, dstType& val)
+    static inline size_t paste(void* data, dstType& val, size_t remainBytes)
     {
-        return val.to(data);
+        return val.to(data, remainBytes);
     }
-    static inline size_t paste(void* data, dstType* val, size_t n)
+    static inline size_t paste(void* data, dstType* val, size_t n, size_t remainBytes)
     {
         uint8_t* beg = (uint8_t*)data;
         size_t total = 0;
         for(int i=0;i<n;++i)
         {
-            size_t offset = (val + i)->to(beg);
+            size_t offset = (val + i)->to(beg, remainBytes);
+            if(!offset)
+            {
+                return 0;
+            }
             beg += offset;
             total += offset;
+            remainBytes -= offset;
         }
         return total;
     }
@@ -172,16 +196,24 @@ template<typename ty, size_t N, size_t... I>
 struct __checkSerialTemplateArgsNum;
 
 template<typename ty, size_t N, size_t... I>
-static size_t __unserialFieldHelper(ty* cls, const void* data, ICD::__my_index_sequence<N, I...>)
+static size_t __unserialFieldHelper(ty* cls, const void* data, ICD::__my_index_sequence<N, I...>, size_t remainBytes)
 {
-    size_t offset = cls->__unserialField(ICD::__uuid<N+1>(), data);
-    return offset + ICD::__checkUnserialTemplateArgsNum<ty, sizeof...(I), I...>::check(cls, (const uint8_t*)data+offset, ICD::__my_index_sequence<I...>{});
+    size_t offset = cls->__unserialField(ICD::__uuid<N+1>(), data, remainBytes);
+    if(!offset)
+    {
+        return 0;
+    }
+    return offset + ICD::__checkUnserialTemplateArgsNum<ty, sizeof...(I), I...>::check(cls, (const uint8_t*)data+offset, ICD::__my_index_sequence<I...>{}, remainBytes - offset);
 }
 template<typename ty, size_t N, size_t... I>
-static size_t __serialFieldHelper(ty* cls, void* data, ICD::__my_index_sequence<N, I...>)
+static size_t __serialFieldHelper(ty* cls, void* data, ICD::__my_index_sequence<N, I...>, size_t remainBytes)
 {
-    size_t offset = cls->__serialField(ICD::__uuid<N+1>(), data);
-    return offset + ICD::__checkSerialTemplateArgsNum<ty, sizeof...(I), I...>::check(cls, (uint8_t*)data+offset, ICD::__my_index_sequence<I...>{});
+    size_t offset = cls->__serialField(ICD::__uuid<N+1>(), data, remainBytes);
+    if(!offset)
+    {
+        return 0;
+    }
+    return offset + ICD::__checkSerialTemplateArgsNum<ty, sizeof...(I), I...>::check(cls, (uint8_t*)data+offset, ICD::__my_index_sequence<I...>{}, remainBytes - offset);
 }
 
 // 检查序列剩余个数，足够才继续调用 index_sequence
@@ -189,29 +221,29 @@ static size_t __serialFieldHelper(ty* cls, void* data, ICD::__my_index_sequence<
 template<typename ty, size_t total, size_t... I>
 struct __checkUnserialTemplateArgsNum
 {
-    static size_t check(ty* cls, const void* data, ICD::__my_index_sequence<I...>)
+    static size_t check(ty* cls, const void* data, ICD::__my_index_sequence<I...>, size_t remainBytes)
     {
-        return ICD::__unserialFieldHelper(cls, data, ICD::__my_index_sequence<I...>{});
+        return ICD::__unserialFieldHelper(cls, data, ICD::__my_index_sequence<I...>{}, remainBytes);
     }
 };
 template<typename ty>
 struct __checkUnserialTemplateArgsNum<ty, 0>
 {
-    static size_t check(ty*, const void*, ICD::__my_index_sequence<>) { return 0; }
+    static size_t check(ty*, const void*, ICD::__my_index_sequence<>, size_t) { return 0; }
 };
 // 序列化
 template<typename ty, size_t total, size_t... I>
 struct __checkSerialTemplateArgsNum
 {
-    static size_t check(ty* cls, void* data, ICD::__my_index_sequence<I...>)
+    static size_t check(ty* cls, void* data, ICD::__my_index_sequence<I...>, size_t remainBytes)
     {
-        return ICD::__serialFieldHelper(cls, data, ICD::__my_index_sequence<I...>{});
+        return ICD::__serialFieldHelper(cls, data, ICD::__my_index_sequence<I...>{}, remainBytes);
     }
 };
 template<typename ty>
 struct __checkSerialTemplateArgsNum<ty, 0>
 {
-    static size_t check(ty*, void*, ICD::__my_index_sequence<>) { return 0; }
+    static size_t check(ty*, void*, ICD::__my_index_sequence<>, size_t) { return 0; }
 };
 
 // 计算当前结构体的icd长度
@@ -259,14 +291,32 @@ struct __initField<true, t>
     inline static void init(t* __t, size_t __n) { memset(__t, 0, __n * sizeof(t)); }
 };
 
+template<typename T>
+struct isDefByIcd
+{
+    template<typename ty>
+    constexpr inline static bool test(decltype(ty::__ICDDef)* t)
+    {
+        return true;
+    }
+    template<typename ty>
+    constexpr inline static bool test(...)
+    {
+        return false;
+    }
+    constexpr static bool value = test<T>(0);
+};
+#define isNotDefByIcd(ty) !ICD::isDefByIcd<ty>::value
+
 } // namespace ICD
 
 #define COMMENT(str)
 
 #define ICD_DEF_BEG \
-    const static size_t __start = __MY_COUNTER;
+    const static size_t __start = __MY_COUNTER; \
+    constexpr static size_t __ICDDef = 114514;
 
-// 定义字段
+// 定义字段isDefByIcd
 // ty     字段类型
 // name   字段名
 // 建议ty尽量采用 int32_t 这种类型，提供明确的字段长度的语义
@@ -274,14 +324,13 @@ struct __initField<true, t>
 #define ICD_DEF_FIELD(ty, name) \
     enum { __field_##name = __MY_COUNTER - __start }; \
     ty name; \
-    size_t __unserialField(ICD::__uuid<__field_##name>, const void* data) \
+    size_t __unserialField(ICD::__uuid<__field_##name>, const void* data, size_t remainBytes) \
     {\
-        const uint8_t* __beg = (const uint8_t*)data; \
-        return ICD::__copyValue<std::is_fundamental<ty>::value, ty>::copy(__beg, name); \
+        return ICD::__copyValue<!ICD::isDefByIcd<ty>::value, ty>::copy((const uint8_t*)data, name, remainBytes); \
     }\
-    size_t __serialField(ICD::__uuid<__field_##name>, void* data) \
+    size_t __serialField(ICD::__uuid<__field_##name>, void* data, size_t remainBytes) \
     {\
-        return ICD::__pasteValue<std::is_fundamental<ty>::value, ty>::paste(data, name); \
+        return ICD::__pasteValue<!ICD::isDefByIcd<ty>::value, ty>::paste(data, name, remainBytes); \
     }\
     size_t __calcFieldLen(ICD::__uuid<__field_##name>) \
     {\
@@ -289,7 +338,7 @@ struct __initField<true, t>
     }\
     void __initField(ICD::__uuid<__field_##name>)\
     {\
-        ICD::__initField<std::is_fundamental<ty>::value, ty>::init(name);\
+        ICD::__initField<!ICD::isDefByIcd<ty>::value, ty>::init(name);\
     }
 
 // 定义定长数组
@@ -299,24 +348,26 @@ struct __initField<true, t>
 #define ICD_DEF_FIX_LEN_ARRAY_FIELD(ty, name, len) \
     enum { __field_##name = __MY_COUNTER - __start }; \
     ty name[len]; \
-    size_t __unserialField(ICD::__uuid<__field_##name>, const void* data) \
+    size_t __unserialField(ICD::__uuid<__field_##name>, const void* data, size_t remainBytes) \
     {\
-        const uint8_t* __beg = (const uint8_t*)data; \
-        ICD::__copyValue<std::is_fundamental<ty>::value, ty>::copy(__beg, (ty*)name, len); \
-        return len * sizeof(ty); \
+        return ICD::__copyValue<!ICD::isDefByIcd<ty>::value, ty>::copy((const uint8_t*)data, (ty*)name, len, remainBytes); \
     }\
-    size_t __serialField(ICD::__uuid<__field_##name>, void* data) \
+    size_t __serialField(ICD::__uuid<__field_##name>, void* data, size_t remainBytes) \
     {\
-        ICD::__pasteValue<std::is_fundamental<ty>::value, ty>::paste(data, (ty*)name, len); \
-        return sizeof(ty) * len; \
+        return ICD::__pasteValue<!ICD::isDefByIcd<ty>::value, ty>::paste(data, (ty*)name, len, remainBytes); \
     }\
     size_t __calcFieldLen(ICD::__uuid<__field_##name>) \
     {\
-        return len * sizeof(ty); \
+        size_t total = 0; \
+        for(decltype(len) i=0;i<len;++i) \
+        {\
+            total += ICD::__getLenHelper<!ICD::isDefByIcd<ty>::value, ty>::value(name + i); \
+        }\
+        return total; \
     }\
     void __initField(ICD::__uuid<__field_##name>)\
     {\
-        ICD::__initField<std::is_fundamental<ty>::value, ty>::init(name, len);\
+        ICD::__initField<!ICD::isDefByIcd<ty>::value, ty>::init(name, len);\
     }
 
 // 定义变长数组
@@ -329,40 +380,51 @@ struct __initField<true, t>
 #define ICD_DEF_VAR_LEN_ARRAY_FORWARD_FIELD(num, ty, name) \
     enum { __field_##name = __MY_COUNTER - __start }; \
     std::vector<ty> name; \
-    size_t __unserialField(ICD::__uuid<__field_##name>, const void* data) \
+    size_t __unserialField(ICD::__uuid<__field_##name>, const void* data, size_t remainBytes) \
     {\
-        const uint8_t* __beg = (const uint8_t*)data; \
-        size_t __totalEelemSize = 0; \
+        const uint8_t* beg = (const uint8_t*)data; \
+        size_t totalEelemSize = 0; \
         for(decltype(num) i=0;i<num;++i) \
         {\
-            ty __t; \
-            size_t __elemSize = ICD::__copyValue<std::is_fundamental<ty>::value, ty>::copy(__beg, __t); \
-            __totalEelemSize += __elemSize; \
-            __beg += __elemSize; \
-            name.push_back(std::move(__t)); \
+            ty t; \
+            size_t elemSize = ICD::__copyValue<!ICD::isDefByIcd<ty>::value, ty>::copy(beg, t, remainBytes); \
+            if(!elemSize) \
+            {\
+                name.clear(); \
+                return 0; \
+            }\
+            totalEelemSize += elemSize; \
+            beg += elemSize; \
+            remainBytes -= elemSize; \
+            name.push_back(std::move(t)); \
         }\
-        return __totalEelemSize; \
+        return totalEelemSize; \
     }\
-    size_t __serialField(ICD::__uuid<__field_##name>, void* data) \
+    size_t __serialField(ICD::__uuid<__field_##name>, void* data, size_t remainBytes) \
     {\
-        uint8_t* __beg = (uint8_t*)data; \
-        size_t __totalElemSize = 0; \
+        uint8_t* beg = (uint8_t*)data; \
+        size_t totalElemSize = 0; \
         for(size_t i=0;i<name.size();++i) \
         {\
-            auto& _e = name[i]; \
-            ICD::__pasteValue<std::is_fundamental<ty>::value, ty>::paste(__beg, _e); \
-            size_t elemSize = ICD::__getLenHelper<std::is_fundamental<ty>::value, ty>::value(&_e); \
-            __totalElemSize += elemSize; \
-            __beg += elemSize; \
+            auto& e = name[i]; \
+            ICD::__pasteValue<!ICD::isDefByIcd<ty>::value, ty>::paste(beg, e, remainBytes); \
+            size_t elemSize = ICD::__getLenHelper<!ICD::isDefByIcd<ty>::value, ty>::value(&e); \
+            if(!elemSize) \
+            {\
+                return 0; \
+            }\
+            totalElemSize += elemSize; \
+            beg += elemSize; \
+            remainBytes -= elemSize; \
         }\
-        return __totalElemSize; \
+        return totalElemSize; \
     }\
     size_t __calcFieldLen(ICD::__uuid<__field_##name>) \
     {\
         size_t len = 0; \
         for(auto&& n : name) \
         {\
-            len += ICD::__getLenHelper<std::is_fundamental<ty>::value, ty>::value(&n); \
+            len += ICD::__getLenHelper<!ICD::isDefByIcd<ty>::value, ty>::value(&n); \
         }\
         return len; \
     }\
@@ -403,14 +465,15 @@ struct __initField<true, t>
 
 #define ICD_DEF_END(cls) \
     const static size_t __fieldNum = __MY_COUNTER - __start - 1; \
-    size_t from(const void* data) \
+    COMMENT("len为缓冲区的长度") \
+    size_t from(const void* data, size_t len = std::numeric_limits<size_t>::max()) \
     {\
         ICD::__initFieldLoop<__fieldNum, cls>::init(this);\
-        return ICD::__unserialFieldHelper(this, data, ICD::__my_make_index_sequence<__fieldNum>{}); \
+        return ICD::__unserialFieldHelper(this, data, ICD::__my_make_index_sequence<__fieldNum>{}, len); \
     }\
-    size_t to(void* data) \
+    size_t to(void* data, size_t len = std::numeric_limits<size_t>::max()) \
     {\
-        return ICD::__serialFieldHelper(this, data, ICD::__my_make_index_sequence<__fieldNum>{}); \
+        return ICD::__serialFieldHelper(this, data, ICD::__my_make_index_sequence<__fieldNum>{}, len); \
     }\
     COMMENT("计算当前结构体需要多少字节存储, 前提是有值, 计算才有意义") \
     size_t calcICDlen() \
