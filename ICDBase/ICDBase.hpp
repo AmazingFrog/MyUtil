@@ -152,19 +152,6 @@ struct __pasteValue<false, dstType>
     }
 };
 
-// 计算icdlen
-// 前提是结构体中有值，用来计算当前结构体序列化以后需要的字节大小
-template<bool, typename ty>
-struct __calcICDLen
-{
-    static size_t calc(ty*) { return sizeof(ty); }
-};
-template<typename ty>
-struct __calcICDLen<false, ty>
-{
-    static size_t calc(ty* cls) { return cls->__calcICDLen(); }
-};
-
 // 获取该类型的字节长度
 template<bool, typename ty>
 struct __getLenHelper
@@ -222,7 +209,7 @@ struct __serialFieldHelper
     template<typename ty, size_t N, size_t... I>
     inline static typename std::enable_if<sizeof...(I)!=0, int>::type serial(ty* cls, void* data, ICD::__my_index_sequence<N, I...>, int  remainBytes)
     {
-        size_t offset = cls->__serialField(ICD::__uuid<N+1>(), data, remainBytes);
+        int offset = cls->__serialField(ICD::__uuid<N+1>(), data, remainBytes);
         if(offset <= 0)
         {
             return offset;
@@ -290,7 +277,7 @@ template<typename T>
 struct isDefByIcd
 {
     template<typename ty>
-    constexpr inline static bool test(decltype(ty::__ICDDef)* t)
+    constexpr inline static bool test(decltype(ty::__ICDDef)*)
     {
         return true;
     }
@@ -442,11 +429,11 @@ struct isDefByIcd
 #define ICD_DEF_NULL_HELPER1(size, line) ICD_DEF_NULL_HELPER2(size, line)
 #define ICD_DEF_NULL_HELPER2(size, name) \
     enum { __field_##name = __MY_COUNTER - __start }; \
-    int64_t __unserialField(ICD::__uuid<__field_##name>, const void*, int  remainBytes) \
+    int __unserialField(ICD::__uuid<__field_##name>, const void*, int remainBytes) \
     {\
         return (remainBytes<size)?0:size; \
     }\
-    int __serialField(ICD::__uuid<__field_##name>, void*, int  remainBytes) \
+    int __serialField(ICD::__uuid<__field_##name>, void*, int remainBytes) \
     {\
         return (remainBytes<size)?0:size; \
     }\
