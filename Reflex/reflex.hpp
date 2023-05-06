@@ -5,6 +5,7 @@
 #include <string>
 #include <memory>
 #include <utility>
+#include <optional>
 #include <iostream>
 #include <functional>
 #include <unordered_map>
@@ -13,6 +14,9 @@ namespace shochu {
 using std::tuple;
 using std::string;
 using std::vector;
+using std::nullopt;
+using std::optional;
+using std::reference_wrapper;
 
 struct FuncBase {
     virtual void run(void* cls, void* res, const std::vector<std::any>& args)  = 0;
@@ -149,20 +153,20 @@ struct Reflex {
     }
 
     template<typename R>
-    static R* getMenber(T& cls, const string& memName) {
+    static optional<reference_wrapper<R>> getMenber(T& cls, const string& memName) {
         auto mem = memberMap().find(memName);
         if(mem == memberMap().end()) {
             std::cerr << "don't find member [" << memName << "]\n";
-            return nullptr;
+            return nullopt;
         }
-        return (R*)mem->second->get(&cls);
+        return *((R*)mem->second->get(&cls));
     }
 
-    static FuncBase* getFn(const string& fnName) {
+    static optional<FuncBase*> getFn(const string& fnName) {
         auto fnIt = fnMap().find(fnName);
         if(fnIt == fnMap().end()) {
             std::cerr << "don't find fn [" << fnName << "]\n";
-            return nullptr;
+            return nullopt;
         }
 
         return fnIt->second.get();
