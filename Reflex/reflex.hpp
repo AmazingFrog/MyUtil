@@ -77,13 +77,13 @@ struct MemberBase {
     virtual void* get(void* cls) = 0;
 };
 
-template<typename Cls, size_t N, typename T>
+template<typename Cls, typename T>
 struct MemberMetadata : public MemberBase {
     using Ty = T;
     
     Ty Cls::* p;
     string name;
-    MemberMetadata(const char (&memName), T (Cls::* pmem)) : p(pmem), name(memName) {}
+    MemberMetadata(string memName, T (Cls::* pmem)) : p(pmem), name(memName) {}
 
     void getValue(void* cls, void* res) override {
         if(res != nullptr) {
@@ -120,7 +120,7 @@ struct Reflex {
     }
 
     template<typename Res, typename... Args>
-    void runFn(T& cls, const string& fnName, Res* res, Args... args) {
+    static void runFn(T& cls, const string& fnName, Res* res, Args... args) {
         auto fnIt = fnMap().find(fnName);
         if(fnIt == fnMap().end()) {
             std::cout << "don't find fn [" << fnName << "]\n";
@@ -132,7 +132,7 @@ struct Reflex {
     }
 
     template<typename... Args>
-    void runFn(T& cls, const string& fnName, Args... args) {
+    static void runFn(T& cls, const string& fnName, Args... args) {
         auto fnIt = fnMap().find(fnName);
         if(fnIt == fnMap().end()) {
             std::cout << "don't find fn [" << fnName << "]\n";
@@ -144,12 +144,12 @@ struct Reflex {
     }
 
     template<typename Mem>
-    void regMember(const string& mem, Mem T::*p) {
+    static void regMember(const string& mem, Mem T::*p) {
         memberMap().emplace(mem, new MemberMetadata(mem, p));
     }
 
     template<typename R>
-    R* getMenber(T& cls, const string& memName) {
+    static R* getMenber(T& cls, const string& memName) {
         auto mem = memberMap().find(memName);
         if(mem == memberMap().end()) {
             std::cerr << "don't find member [" << memName << "]\n";
@@ -158,7 +158,7 @@ struct Reflex {
         return (R*)mem->second->get(&cls);
     }
 
-    FuncBase* getFn(const string& fnName) {
+    static FuncBase* getFn(const string& fnName) {
         auto fnIt = fnMap().find(fnName);
         if(fnIt == fnMap().end()) {
             std::cerr << "don't find fn [" << fnName << "]\n";
