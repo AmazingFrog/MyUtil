@@ -5,7 +5,7 @@
 #include <vector>
 #include <variant>
 
-#include "reflex.hpp"
+#include "../Reflex/reflex.hpp"
 
 namespace shochu {
 using std::string;
