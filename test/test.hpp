@@ -1,93 +1,28 @@
 #ifndef _TEST_H_
 #define _TEST_H_
 
+#include <any>
 #include <string>
 #include <vector>
-#include <variant>
+#include <memory>
+#include <iostream>
 
+#include "../util.hpp"
+#include "../concept.hpp"
 #include "../Reflex/reflex.hpp"
 
 namespace shochu {
-using std::string;
-using std::vector;
-using std::tuple;
+using namespace shochu::util;
+using namespace shochu::concepts;
+
+using std::any;
 using std::cout;
+using std::vector;
+using std::string;
 using std::to_string;
+using std::unique_ptr;
 
 static int TEST_CASE_NUM = 1;
-
-string to_string(const string& s) {
-    return "\"" + s + "\"";
-}
-
-string to_string(const char* s) {
-    return "\"" + string(s) + "\"";
-}
-
-string to_string(bool b) {
-    return b?"true":"false";
-}
-
-template<size_t N, typename... Args>
-struct Tuple2String {
-    static void to(const tuple<Args...>& a, string& s) {
-        if constexpr (N != sizeof...(Args)) {
-            s.append(to_string(std::get<N>(a)));
-            s.append(", ");
-            Tuple2String<N+1, Args...>::to(a, s);
-        }
-    }
-};
-
-template<typename... Args>
-string to_string(const tuple<Args...>& a) {
-    string s("(");
-    Tuple2String<0, Args...>::to(a, s);
-    s.pop_back();
-    s.pop_back();
-    s.push_back(')');
-    return s;
-}
-
-template<typename Res, typename FuncRet>
-concept hasOperatorEqual = requires(Res r, FuncRet f) {
-    r == f;
-};
-
-template<typename T>
-concept hasToString = requires(T a) {
-    { to_string(a) } -> std::same_as<string>;
-};
-
-template<typename T>
-concept hasIter = requires(T a) {
-    std::begin(a);
-    std::end(a);
-};
-
-template<typename T>
-requires hasToString<T>
-string printRes(const T& p) {
-    return to_string(p);
-}
-
-template<typename T>
-requires hasIter<T>
-string printRes(const T& p) {
-    if(std::begin(p) == std::end(p)) {
-        return "[]";
-    }
-    string s;
-    s.push_back('[');
-    for(auto&& i : p) {
-        s.append(printRes(i));
-        s.append(", ");
-    }
-    s.pop_back();
-    s.pop_back();
-    s.push_back(']');
-    return s;
-}
 
 template<typename T>
 struct getMenFnClass;
@@ -108,7 +43,7 @@ void test(Func testFunc, Res res, Args... args) {
     clock_t end = clock();
     bool cmpRes = r == res;
     if(!cmpRes) {
-        errStr = ", expect res is " + printRes(res) + " and calc res is " + printRes(r);
+        errStr = ", expect res is " + toString(res) + " and calc res is " + toString(r);
     }
     
     cout << "test case [" << TEST_CASE_NUM++ << "]: result => "
@@ -129,7 +64,7 @@ void test(Func testFunc, Res res, Args... args) {
     clock_t end = clock();
     bool cmpRes = r == res;
     if(!cmpRes) {
-        errStr = ", expect res is " + printRes(res) + " and calc res is " + printRes(r);
+        errStr = ", expect res is " + toString(res) + " and calc res is " + toString(r);
     }
     
     cout << "test case [" << TEST_CASE_NUM++ << "]: result => "
@@ -141,34 +76,94 @@ void test(Func testFunc, Res res, Args... args) {
     cout << "\n";
 }
 
-struct typeHolder {
-    virtual bool operator==(void* rhs) = 0;
+struct TypeBase {
+    any data;
+
+    TypeBase() = default;
+    template<typename T>
+    TypeBase(T t) : data(t) {}
+
+    virtual bool operator==(const TypeBase& rhs) = 0;
+    virtual bool operator==(const any& rhs) = 0;
+
+    virtual string toString(const any& o) = 0;
+
+    virtual ~TypeBase() {}
 };
 
 template<typename T>
-struct typeHolderImpl : public typeHolder {
-    T val;
-    typeHolderImpl() = delete;
-    typeHolderImpl(T v) : val(v) {}
+struct Type : public TypeBase {
+    Type() = default;
+    Type(T&& t) : TypeBase(std::forward<T>(t)) {}
 
-    bool operator==(void* rhs) override {
-        return val == *(T*)rhs;
+    bool operator==(const TypeBase& rhs) override {
+        return this->operator==(rhs.data);
+    }
+    bool operator==(const any& rhs) override {
+        if(!data.has_value() && !rhs.has_value()) {
+            return true;
+        }
+        if(data.type() != rhs.type()) {
+            return false;
+        }
+        return std::any_cast<T>(data) == std::any_cast<T>(rhs);
+    }
+
+    string toString(const any& o) {
+        try{
+            return shochu::toString(any_cast<T>(o));
+        }
+        catch(const std::bad_any_cast&) {
+            return "";
+        }
+    }
+};
+template<>
+struct Type<decltype(nullptr)> : public TypeBase {
+    Type() = default;
+    Type(decltype(nullptr)) {}
+
+    bool operator==(const TypeBase& rhs) override {
+        return this->operator==(rhs.data);
+    }
+    bool operator==(const any& rhs) override {
+        return data.type() == rhs.type();
+    }
+
+    string toString(const any& o) override {
+        return "void";
     }
 };
 
-// template<typename T>
-// void test(T& cls, const vector<string>& cmds, const vector<std::any>& args, const vector<variant<int, double>>& res) {
-//     if(cmds.size() != args.size()) {
-//         std::cerr << "cmds and args dismatch\n";
-//         return;
-//     }
+template<typename... Args>
+vector<unique_ptr<TypeBase>> constructTypeBase(Args&&... args) {
+    using shochu::operator<<;
+    vector<unique_ptr<TypeBase>> r;
+    (r << ... << unique_ptr<TypeBase>(new Type(std::forward<Args>(args))));
+    return r;
+}
 
-//     Reflex<T> re;
-//     for(int i=0;i<cmds.size();++i) {
-//         re.getFn(cmds[i])->run(&cls, nullptr, args[i]);
-//     }
-// }
+void test(const vector<unique_ptr<TypeBase>>& expect, const vector<any>& res) {
+    if(expect.size() != res.size()) {
+        cout << "size don't match, [expect].size() == " << expect.size()
+             << " and [res].size() == " << res.size() << "\n";
+        return;
+    }
+    int n = expect.size();
+    for(int i=0;i<n;++i) {
+        if(*expect[i] != res[i]) {
+            cout << "res [" << i << "] don't equal, expect [" << expect[i]->toString(expect[i]->data) << "]"
+                 << ", and calc [" << expect[i]->toString(res[i]) << "]\n";
+        }
+    }
+    cout << "test finish\n";
+}
 
+template<typename Cls>
+void test(const vector<string>& cmds, vector<vector<any>>& args, const vector<unique_ptr<TypeBase>>& expect) {
+    auto res = runCmds<Cls>(cmds, args);
+    test(expect, res);
+}
 
 }
 #endif // _TEST_H_

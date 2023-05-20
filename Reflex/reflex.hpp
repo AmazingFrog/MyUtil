@@ -22,6 +22,8 @@ using std::reference_wrapper;
 struct ConstructorBase {
     virtual void* create(const vector<any>& args) = 0;
     virtual bool isMatch(const vector<any>& args) = 0;
+
+    virtual ~ConstructorBase() {}
 };
 
 template<typename T, typename... Args>
@@ -87,8 +89,11 @@ struct ConstructotMetadata : public ConstructorBase {
 };
 
 struct FuncBase {
-    virtual void run(void* cls, void* res, const std::vector<std::any>& args)  = 0;
-    virtual void run(void* cls, const std::vector<std::any>& args) = 0;
+    virtual bool run(void* cls, void* res, std::vector<std::any>& args)  = 0;
+    virtual bool run(void* cls, std::any& res, std::vector<std::any>& args) = 0;
+    virtual bool run(void* cls, std::vector<std::any>& args) = 0;
+
+    virtual ~FuncBase() {}
 };
 
 template<typename Cls, typename Res, typename... Args>
@@ -105,23 +110,29 @@ struct FuncMetadata : public FuncBase {
     FuncMetadata() = delete;
     FuncMetadata(string fnName, Res (Cls::*f)(Args...)) : name(fnName), fn(f) {}
 
-    void run(void* cls, void* res, const std::vector<std::any>& args) override {
+    bool run(void* cls, void* res, std::vector<std::any>& args) override {
         if(ArgsSize != args.size()) {
-            return;
+            return false;
         }
 
-        doRun<ArgsSize>(cls, res, args);
+        return doRun<ArgsSize>(cls, res, args);
     }
-    void run(void* cls, const std::vector<std::any>& args) override {
+    bool run(void* cls, std::any& res, std::vector<std::any>& args) override {
         if(ArgsSize != args.size()) {
-            return;
+            return false;
         }
 
-        doRun<ArgsSize>(cls, nullptr, args);
+        Res r;
+        bool b = run(cls, &r, args);
+        res = b?r:res;
+        return b;
+    }
+    bool run(void* cls, std::vector<std::any>& args) override {
+        return run(cls, nullptr, args);
     }
 
     template<size_t M, typename... ArgType>
-    void doRun(void* cls, void* res, const std::vector<std::any>& args, ArgType&&... arg) {
+    bool doRun(void* cls, void* res, std::vector<std::any>& args, ArgType&&... arg) {
         if constexpr (M == 0) {
             if constexpr (std::is_same_v<Res, void>) {
                 fn((Cls*)cls, std::forward<ArgType>(arg)...);
@@ -136,15 +147,17 @@ struct FuncMetadata : public FuncBase {
             }
         }
         else {
-            using thisArgType = std::tuple_element_t<M-1, ArgsType>;
             try {
-                thisArgType thisArg = std::any_cast<thisArgType>(args[M-1]);
-                doRun<M-1, thisArgType, ArgType...>((Cls*)cls, res, args, move(thisArg), std::forward<ArgType>(arg)...);
+                using thisArgType = std::tuple_element_t<M-1, ArgsType>;
+                doRun<M-1, thisArgType, ArgType...>((Cls*)cls, res, args, std::any_cast<thisArgType>(args[M-1]), std::forward<ArgType>(arg)...);
             }
             catch(const std::bad_any_cast& e) {
                 std::cerr << "run fn [" << name << "], [" << M-1 <<"] arg type dismatch\n";
+                return false;
             }
         }
+
+        return true;
     }
 };
 
@@ -152,6 +165,8 @@ struct MemberBase {
     virtual void getValue(void* cls, void* res) = 0;
     virtual void setValue(void* cls, const void* v) = 0;
     virtual void* get(void* cls) = 0;
+
+    virtual ~MemberBase() {}
 };
 
 template<typename Cls, typename T>
@@ -183,6 +198,10 @@ struct Reflex {
     using MemMapType = std::unordered_map<string, std::unique_ptr<MemberBase>>;
     using ConstructorMapType = std::vector<std::unique_ptr<ConstructorBase>>;
 
+    static string& className() {
+        static string n;
+        return n;
+    }
     static FnMapType& fnMap() {
         static FnMapType f;
         return f;
@@ -207,8 +226,8 @@ struct Reflex {
     }
 
     template<typename... Args>
-    static void regConstructor(const string& name) {
-        conMap().emplace_back(new ConstructotMetadata<T, Args...>(name));
+    static void regConstructor() {
+        conMap().emplace_back(new ConstructotMetadata<T, Args...>(className()));
     }
 
     static optional<FuncBase*> getFn(const string& fnName) {
@@ -222,20 +241,30 @@ struct Reflex {
     }
 
     template<typename Res>
-    static void runFn(T& cls, const string& fnName, Res& res, const vector<std::any>& args) {
+    requires (!std::same_as<Res, any>)
+    static bool runFn(T& cls, const string& fnName, Res& res, vector<std::any>& args) {
         auto fnIt = fnMap().find(fnName);
         if(fnIt == fnMap().end()) {
             std::cout << "don't find fn [" << fnName << "]\n";
-            return;
+            return false;
         }
-        fnIt->second->run(&cls, &res, args);
+        return fnIt->second->run(&cls, &res, args);
     }
 
-    static void runFn(T& cls, const string& fnName, const vector<std::any>& args) {
+    static bool runFn(T& cls, const string& fnName, std::any& res, vector<std::any>& args) {
         auto fnIt = fnMap().find(fnName);
         if(fnIt == fnMap().end()) {
             std::cout << "don't find fn [" << fnName << "]\n";
-            return;
+            return false;
+        }
+        return fnIt->second->run(&cls, res, args);
+    }
+
+    static bool runFn(T& cls, const string& fnName, vector<std::any>& args) {
+        auto fnIt = fnMap().find(fnName);
+        if(fnIt == fnMap().end()) {
+            std::cout << "don't find fn [" << fnName << "]\n";
+            return false;
         }
         fnIt->second->run(&cls, args);
     }
@@ -276,10 +305,11 @@ struct Reflex {
 #define REFLEX_BEG(cls)     \
 struct Reflex_##cls {       \
     using T = cls;          \
-    Reflex_##cls() {
+    Reflex_##cls() {        \
+        shochu::Reflex<T>::className() = #cls;
 
 #define REFLEX_FN(name, fn) shochu::Reflex<T>::regFn(name, fn);
-#define REFLEX_CON(name, ...) shochu::Reflex<T>::regConstructor<__VA_ARGS__>(name);
+#define REFLEX_CON(...) shochu::Reflex<T>::regConstructor<__VA_ARGS__>();
 #define REFLEX_MEM(name, mem) shochu::Reflex<T>::regMember(name, mem);
 
 #define REFLEX_END(cls) \
