@@ -1,6 +1,7 @@
 ﻿#ifndef ICDBASE_HPP
 #define ICDBASE_HPP
 
+#include <limits>
 #include <string>
 #include <vector>
 #include <cstring>
@@ -306,13 +307,13 @@ struct isDefByIcd
 #define ICD_DEF_FIELD(ty, name) \
     enum { __field_##name = __MY_COUNTER - __start }; \
     ty name; \
-    int __unserialField(ICD::__uuid<__field_##name>, const void* data, int  remainBytes) \
+    int __unserialField(ICD::__uuid<__field_##name>, const void* _data, int _remainBytes) \
     {\
-        return ICD::__copyValue<!ICD::isDefByIcd<ty>::value, ty>::copy((const uint8_t*)data, name, remainBytes); \
+        return ICD::__copyValue<!ICD::isDefByIcd<ty>::value, ty>::copy((const uint8_t*)_data, name, _remainBytes); \
     }\
-    int __serialField(ICD::__uuid<__field_##name>, void* data, int  remainBytes) \
+    int __serialField(ICD::__uuid<__field_##name>, void* _data, int  _remainBytes) \
     {\
-        return ICD::__pasteValue<!ICD::isDefByIcd<ty>::value, ty>::paste(data, name, remainBytes); \
+        return ICD::__pasteValue<!ICD::isDefByIcd<ty>::value, ty>::paste(_data, name, _remainBytes); \
     }\
     size_t __calcFieldLen(ICD::__uuid<__field_##name>) \
     {\
@@ -330,13 +331,13 @@ struct isDefByIcd
 #define ICD_DEF_FIX_LEN_ARRAY_FIELD(ty, name, len) \
     enum { __field_##name = __MY_COUNTER - __start }; \
     ty name[len]; \
-    int64_t __unserialField(ICD::__uuid<__field_##name>, const void* data, int  remainBytes) \
+    int64_t __unserialField(ICD::__uuid<__field_##name>, const void* _data, int _remainBytes) \
     {\
-        return ICD::__copyValue<!ICD::isDefByIcd<ty>::value, ty>::copy((const uint8_t*)data, (ty*)name, len, remainBytes); \
+        return ICD::__copyValue<!ICD::isDefByIcd<ty>::value, ty>::copy((const uint8_t*)_data, (ty*)name, len, _remainBytes); \
     }\
-    int __serialField(ICD::__uuid<__field_##name>, void* data, int  remainBytes) \
+    int __serialField(ICD::__uuid<__field_##name>, void* _data, int _remainBytes) \
     {\
-        return ICD::__pasteValue<!ICD::isDefByIcd<ty>::value, ty>::paste(data, (ty*)name, len, remainBytes); \
+        return ICD::__pasteValue<!ICD::isDefByIcd<ty>::value, ty>::paste(_data, (ty*)name, len, _remainBytes); \
     }\
     size_t __calcFieldLen(ICD::__uuid<__field_##name>) \
     {\
@@ -362,42 +363,42 @@ struct isDefByIcd
 #define ICD_DEF_VAR_LEN_ARRAY_FORWARD_FIELD(num, ty, name) \
     enum { __field_##name = __MY_COUNTER - __start }; \
     std::vector<ty> name; \
-    int __unserialField(ICD::__uuid<__field_##name>, const void* data, int  remainBytes) \
+    int __unserialField(ICD::__uuid<__field_##name>, const void* _data, int _remainBytes) \
     {\
-        const uint8_t* beg = (const uint8_t*)data; \
-        int totalEelemSize = 0; \
+        const uint8_t* _beg = (const uint8_t*)_data; \
+        int _totalEelemSize = 0; \
         for(decltype(num) i=0;i<num;++i) \
         {\
-            ty t; \
-            int elemSize = ICD::__copyValue<!ICD::isDefByIcd<ty>::value, ty>::copy(beg, t, remainBytes); \
-            if(elemSize <= 0) \
+            ty _t; \
+            int _elemSize = ICD::__copyValue<!ICD::isDefByIcd<ty>::value, ty>::copy(_beg, _t, _remainBytes); \
+            if(_elemSize <= 0) \
             {\
-                return -totalEelemSize + elemSize; \
+                return -_totalEelemSize + _elemSize; \
             }\
-            totalEelemSize += elemSize; \
-            beg += elemSize; \
-            remainBytes -= elemSize; \
-            name.push_back(std::move(t)); \
+            _totalEelemSize += _elemSize; \
+            _beg += _elemSize; \
+            _remainBytes -= _elemSize; \
+            name.push_back(std::move(_t)); \
         }\
-        return totalEelemSize; \
+        return _totalEelemSize; \
     }\
-    int __serialField(ICD::__uuid<__field_##name>, void* data, int  remainBytes) \
+    int __serialField(ICD::__uuid<__field_##name>, void* _data, int _remainBytes) \
     {\
-        uint8_t* beg = (uint8_t*)data; \
-        int totalElemSize = 0; \
+        uint8_t* _beg = (uint8_t*)_data; \
+        int _totalElemSize = 0; \
         for(size_t i=0;i<name.size() && i<num;++i) \
         {\
-            auto& e = name[i]; \
-            int elemSize = ICD::__pasteValue<!ICD::isDefByIcd<ty>::value, ty>::paste(beg, e, remainBytes); \
-            if(elemSize <= 0) \
+            auto& _e = name[i]; \
+            int _elemSize = ICD::__pasteValue<!ICD::isDefByIcd<ty>::value, ty>::paste(_beg, _e, _remainBytes); \
+            if(_elemSize <= 0) \
             {\
-                return -totalElemSize + elemSize; \
+                return -_totalElemSize + _elemSize; \
             }\
-            totalElemSize += elemSize; \
-            beg += elemSize; \
-            remainBytes -= elemSize; \
+            _totalElemSize += _elemSize; \
+            _beg += _elemSize; \
+            _remainBytes -= _elemSize; \
         }\
-        return totalElemSize; \
+        return _totalElemSize; \
     }\
     size_t __calcFieldLen(ICD::__uuid<__field_##name>) \
     {\
@@ -429,13 +430,13 @@ struct isDefByIcd
 #define ICD_DEF_NULL_HELPER1(size, line) ICD_DEF_NULL_HELPER2(size, line)
 #define ICD_DEF_NULL_HELPER2(size, name) \
     enum { __field_##name = __MY_COUNTER - __start }; \
-    int __unserialField(ICD::__uuid<__field_##name>, const void*, int remainBytes) \
+    int __unserialField(ICD::__uuid<__field_##name>, const void*, int _remainBytes) \
     {\
-        return (remainBytes<size)?0:size; \
+        return (_remainBytes<size)?0:size; \
     }\
-    int __serialField(ICD::__uuid<__field_##name>, void*, int remainBytes) \
+    int __serialField(ICD::__uuid<__field_##name>, void*, int _remainBytes) \
     {\
-        return (remainBytes<size)?0:size; \
+        return (_remainBytes<size)?0:size; \
     }\
     size_t __calcFieldLen(ICD::__uuid<__field_##name>) \
     {\
