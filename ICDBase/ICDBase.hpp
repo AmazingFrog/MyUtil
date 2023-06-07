@@ -54,7 +54,7 @@ struct __copyValue<true, dstType>
     {
         if(remainBytes < sizeof(dstType))
         {
-            return 0;
+            return -(int)sizeof(dstType);
         }
         memcpy(&val, data, sizeof(dstType));
         return sizeof(dstType);
@@ -63,7 +63,7 @@ struct __copyValue<true, dstType>
     {
         if(remainBytes < sizeof(dstType) * n)
         {
-            return 0;
+            return -(int)(sizeof(dstType) * n);
         }
         memcpy(val, data, sizeof(dstType) * n);
         return sizeof(dstType) * n;
@@ -84,7 +84,7 @@ struct __copyValue<false, dstType>
         for(size_t i=0;i<n;++i)
         {
             int offset = (val + i)->from(data, remainBytes);
-            if(offset <= 0)
+            if(offset < 0)
             {
                 return -total + offset;
             }
@@ -112,7 +112,7 @@ struct __pasteValue<true, dstType>
     {
         if(remainBytes < sizeof(dstType))
         {
-            return 0;
+            return -(int)sizeof(dstType);
         }
         memcpy(data, &val, sizeof(dstType));
         return sizeof(dstType);
@@ -121,7 +121,7 @@ struct __pasteValue<true, dstType>
     {
         if(remainBytes < sizeof(dstType) * n)
         {
-            return 0;
+            return -(int)(sizeof(dstType) * n);
         }
         memcpy(data, val, sizeof(dstType) * n);
         return sizeof(dstType) * n;
@@ -141,7 +141,7 @@ struct __pasteValue<false, dstType>
         for(int i=0;i<n;++i)
         {
             int offset = (val + i)->to(beg, remainBytes);
-            if(offset <= 0)
+            if(offset < 0)
             {
                 return -total + offset;
             }
@@ -186,12 +186,12 @@ struct __unserialFieldHelper
     inline static typename std::enable_if<sizeof...(I)!=0, int>::type unserial(ty* cls, const void* data, ICD::__my_index_sequence<N, I...>, int  remainBytes)
     {
         int offset = cls->__unserialField(ICD::__uuid<N+1>(), data, remainBytes);
-        if(offset <= 0)
+        if(offset < 0)
         {
             return offset;
         }
         int after = ICD::__unserialFieldHelper::unserial<ty, I...>(cls, (const uint8_t*)data+offset, ICD::__my_index_sequence<I...>{}, remainBytes - offset);
-        if(after <= 0)
+        if(after < 0)
         {
             return -offset + after;
         }
@@ -211,12 +211,12 @@ struct __serialFieldHelper
     inline static typename std::enable_if<sizeof...(I)!=0, int>::type serial(ty* cls, void* data, ICD::__my_index_sequence<N, I...>, int  remainBytes)
     {
         int offset = cls->__serialField(ICD::__uuid<N+1>(), data, remainBytes);
-        if(offset <= 0)
+        if(offset < 0)
         {
             return offset;
         }
         int after = ICD::__serialFieldHelper::serial<ty, I...>(cls, (uint8_t*)data+offset, ICD::__my_index_sequence<I...>{}, remainBytes - offset);
-        if(after <= 0)
+        if(after < 0)
         {
             return -offset + after;
         }
@@ -371,7 +371,7 @@ struct isDefByIcd
         {\
             ty _t; \
             int _elemSize = ICD::__copyValue<!ICD::isDefByIcd<ty>::value, ty>::copy(_beg, _t, _remainBytes); \
-            if(_elemSize <= 0) \
+            if(_elemSize < 0) \
             {\
                 return -_totalEelemSize + _elemSize; \
             }\
@@ -390,7 +390,7 @@ struct isDefByIcd
         {\
             auto& _e = name[i]; \
             int _elemSize = ICD::__pasteValue<!ICD::isDefByIcd<ty>::value, ty>::paste(_beg, _e, _remainBytes); \
-            if(_elemSize <= 0) \
+            if(_elemSize < 0) \
             {\
                 return -_totalElemSize + _elemSize; \
             }\
@@ -448,7 +448,7 @@ struct isDefByIcd
     const static size_t __fieldNum = __MY_COUNTER - __start - 1; \
     COMMENT("len为缓冲区的长度") \
     COMMENT("返回值大于0，则成功") \
-    COMMENT("返回值小于0，则失败，绝对值为直到出现不能初始化的字段前使用的字节数") \
+    COMMENT("返回值小于0，则失败，绝对值为直到出现不能初始化的字段一共使用的字节数(包括不能初始化的这个字段大小)") \
     int from(const void* data, int len = std::numeric_limits<int>::max()) \
     {\
         ICD::__initFieldLoop<__fieldNum, cls>::init(this);\
