@@ -151,10 +151,15 @@ vector<any> runCmds(const vector<string>& cmds, vector<vector<any>>& args) {
         }
     }
     else {
-        cls = new Cls();
+        if constexpr (requires(Cls a) { new Cls(); }) {
+            cls = new Cls();
+        }
+        else {
+            cout << "don't find constructer [" << re::className() << "()]\n";
+            return {};
+        }
     }
 
-    
     for(int i=b;i<n;++i) {
         any r;
         if(re::runFn(*cls, cmds[i], r, args[i])) {
