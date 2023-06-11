@@ -4,6 +4,7 @@
 #include <any>
 #include <tuple>
 #include <string>
+#include <iostream>
 
 #include "concept.hpp"
 #include "Reflex/reflex.hpp"
@@ -13,20 +14,51 @@ namespace util {
 using namespace shochu::concepts;
 
 using std::any;
+using std::cout;
+using std::pair;
 using std::tuple;
 using std::string;
 using std::to_string;
 
-string to_string(const string& s) {
+// 声明
+template<typename T>
+requires hasToString<T>
+string toString(const T& p);
+
+template<typename T>
+requires (hasIter<T> && !std::same_as<T, string>)
+string toString(const T& p);
+
+// ---
+
+template<>
+string to_string<string>(const string& s) {
     return "\"" + s + "\"";
 }
 
-string to_string(const char* s) {
+template<>
+string to_string<const char*>(const char* const& s) {
     return "\"" + string(s) + "\"";
 }
 
-string to_string(bool b) {
+template<>
+string to_string<bool>(const bool& b) {
     return b?"true":"false";
+}
+
+template<>
+string to_string<nullptr_t>(const nullptr_t&) {
+    return "null";
+}
+
+template<typename T1, typename T2>
+string to_string(const pair<T1, T2>& a) {
+    string s("(");
+    s.append(toString(a.first));
+    s.append(", ");
+    s.append(toString(a.second));
+    s.push_back(')');
+    return s;
 }
 
 template<size_t N, typename... Args>
@@ -57,7 +89,7 @@ string toString(const T& p) {
 }
 
 template<typename T>
-requires hasIter<T>
+requires (hasIter<T> && !std::same_as<T, string>)
 string toString(const T& p) {
     if(std::begin(p) == std::end(p)) {
         return "[]";
@@ -76,12 +108,13 @@ string toString(const T& p) {
 
 struct MultiArray {
     template<typename T, typename... Args>
-    constexpr static auto createV(T v, int dim, Args... o) {
-        return std::vector<decltype((MultiArray::createV<T>(v, o...)))>(dim, MultiArray::createV<T>(v, o...));
+    constexpr static auto createV(T&& v, int dim, Args... o) {
+        return std::vector<decltype((MultiArray::createV<T>(std::forward<T>(v), o...)))>
+                    (dim, MultiArray::createV<T>(std::forward<T>(v), o...));
     }
     template<typename T>
-    constexpr static std::vector<T> createV(T v, int dim) {
-        return std::vector<T>(dim, v);
+    constexpr static std::vector<T> createV(T&& v, int dim) {
+        return std::vector<T>(dim, std::forward<T>(v));
     }
     template<typename T, typename... Args>
     constexpr static auto create(int dim, Args... o) {
