@@ -121,7 +121,7 @@ struct Type : public TypeBase {
 template<>
 struct Type<decltype(nullptr)> : public TypeBase {
     Type() = default;
-    Type(decltype(nullptr)) {}
+    Type(decltype(nullptr)) : TypeBase(nullptr) {}
 
     bool operator==(const TypeBase& rhs) override {
         return this->operator==(rhs.data);
@@ -161,8 +161,63 @@ void test(const vector<unique_ptr<TypeBase>>& expect, const vector<any>& res) {
 
 template<typename Cls>
 void test(const vector<string>& cmds, vector<vector<any>>& args, const vector<unique_ptr<TypeBase>>& expect) {
-    auto res = runCmds<Cls>(cmds, args);
-    test(expect, res);
+    // auto res = runCmds<Cls>(cmds, args);
+    // test(expect, res);
+    if(cmds.empty()) {
+        cout << "cmds is empty\n";
+        return;
+    }
+
+    using re = Reflex<Cls>;
+    Cls* cls = nullptr;
+    int b = 0;
+    int n = cmds.size();
+
+    if(cmds[0] == re::className()) {
+        auto r = re::create(args[0]);
+        if(r) {
+            cls = r.value();
+            b = 1;
+        }
+        else {
+            cout << "create [" << re::className() << "] failure\n";
+            return;
+        }
+    }
+    else {
+        if constexpr (std::is_constructible_v<Cls>) {
+            cls = new Cls();
+        }
+        else {
+            cout << "don't find constructer [" << re::className() << "()]\n";
+            return;
+        }
+    }
+    
+    clock_t beg;
+    clock_t end;
+    string errStr;
+    for(;b<n;++b) {
+        std::any res;
+        bool cmpRes = false;
+        beg = clock();
+        if(re::runFn(*cls, cmds[b], res, args[b])) {
+            end = clock();
+            cmpRes = (*expect[b]) == res;
+
+            if(!cmpRes) {
+                errStr = ", expect res is " + (*expect[b]).toString((*expect[b]).data)
+                       + " and calc res is " + (*expect[b]).toString(res);
+            }
+        }
+
+        cout << "test case [" << TEST_CASE_NUM++ << "]: result => "
+             << (cmpRes?"\033[32mok\033[0m":"\033[31mfialure\033[0m");
+        cout << ", time use: " << (end-beg)*1.0/CLOCKS_PER_SEC*1000 << "ms";
+        cout << (cmpRes?errStr:"") << "\n";
+    }
+
+    delete cls;
 }
 
 }

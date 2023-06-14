@@ -143,7 +143,7 @@ vector<any> runCmds(const vector<string>& cmds, vector<vector<any>>& args) {
         if(r) {
             cls = r.value();
             b = 1;
-            res.emplace_back(any{});
+            res.emplace_back(any{nullptr});
         }
         else {
             cout << "create [" << re::className() << "] failure\n";
@@ -151,7 +151,7 @@ vector<any> runCmds(const vector<string>& cmds, vector<vector<any>>& args) {
         }
     }
     else {
-        if constexpr (requires(Cls a) { new Cls(); }) {
+        if constexpr (std::is_constructible_v<Cls>) {
             cls = new Cls();
         }
         else {

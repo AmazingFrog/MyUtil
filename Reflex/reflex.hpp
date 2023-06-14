@@ -121,10 +121,17 @@ struct FuncMetadata : public FuncBase {
             return false;
         }
 
-        Res r;
-        bool b = run(cls, &r, args);
-        res = b?r:res;
-        return b;
+        if constexpr (std::is_same_v<Res, void>) {
+            res = nullptr;
+            return run(cls, nullptr, args);
+        }
+        else {
+            Res r;
+            bool b = run(cls, &r, args);
+            res = b?r:res;
+            return b;
+        }
+        
     }
     bool run(void* cls, std::vector<std::any>& args) override {
         return run(cls, nullptr, args);
