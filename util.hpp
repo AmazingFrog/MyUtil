@@ -22,12 +22,12 @@ using std::to_string;
 
 // 声明
 template<typename T>
-requires hasToString<T>
+requires (!hasIter<T> && hasToString<T>)
 string toString(const T& p);
 
-template<typename T>
-requires (hasIter<T> && !std::same_as<T, string>)
-string toString(const T& p);
+template<typename Vec>
+requires (hasIter<Vec> && !std::same_as<Vec, string>)
+string toString(const Vec& p);
 
 // ---
 
@@ -83,14 +83,14 @@ string to_string(const tuple<Args...>& a) {
 }
 
 template<typename T>
-requires hasToString<T>
+requires (!hasIter<T> && hasToString<T>)
 string toString(const T& p) {
     return to_string(p);
 }
 
-template<typename T>
-requires (hasIter<T> && !std::same_as<T, string>)
-string toString(const T& p) {
+template<typename Vec>
+requires (hasIter<Vec> && !std::same_as<Vec, string>)
+string toString(const Vec& p) {
     if(std::begin(p) == std::end(p)) {
         return "[]";
     }
