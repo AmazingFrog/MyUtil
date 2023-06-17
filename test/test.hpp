@@ -210,6 +210,10 @@ void test(const vector<string>& cmds, vector<vector<any>>& args, const vector<un
                        + " and calc res is " + (*expect[b]).toString(res);
             }
         }
+        else {
+            cout << "run function error\n";
+            return;
+        }
 
         cout << "test case [" << TEST_CASE_NUM++ << "]: result => "
              << (cmpRes?"\033[32mok\033[0m":"\033[31mfialure\033[0m");
