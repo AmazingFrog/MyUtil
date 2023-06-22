@@ -173,7 +173,7 @@ struct GetChildFromRoot<0, outClass> {
     inline static void get(outClass* , const SCNode& ) {}
 };
 
-// #define COMMENT(str) /\
+// #define COMMENT(str) /
 // /str
 #define COMMENT(str) 
 
