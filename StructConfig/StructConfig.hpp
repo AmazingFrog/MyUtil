@@ -173,8 +173,6 @@ struct GetChildFromRoot<0, outClass> {
     inline static void get(outClass* , const SCNode& ) {}
 };
 
-// #define COMMENT(str) /
-// /str
 #define COMMENT(str) 
 
 #define RegisterStruct_Begin(name)\
