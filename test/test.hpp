@@ -218,7 +218,7 @@ void test(const vector<string>& cmds, vector<vector<any>>& args, const vector<un
         cout << "test case [" << TEST_CASE_NUM++ << "]: result => "
              << (cmpRes?"\033[32mok\033[0m":"\033[31mfialure\033[0m");
         cout << ", time use: " << (end-beg)*1.0/CLOCKS_PER_SEC*1000 << "ms";
-        cout << (cmpRes?errStr:"") << "\n";
+        cout << (!cmpRes?errStr:"") << "\n";
     }
 
     delete cls;
