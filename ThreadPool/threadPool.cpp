@@ -64,7 +64,7 @@ void shochu::ThreadPool::workThread() {
 }
 
 void shochu::ThreadPool::checkThread() {
-    struct timespec t = {.tv_sec=0, .tv_nsec=1000};
+    struct timespec t = {.tv_sec=0, .tv_nsec= 50 * 1000};
     while(!this->isQuit) {
         if(this->q.size()) {
             this->cv.notify_one();
