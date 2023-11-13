@@ -167,11 +167,18 @@ void test(const vector<string>& cmds, vector<vector<any>>& args, const vector<un
         cout << "cmds is empty\n";
         return;
     }
-
+    
     using re = Reflex<Cls>;
     Cls* cls = nullptr;
     int b = 0;
     int n = cmds.size();
+    int test_num = 1;
+
+    if(cmds.size() != args.size() || cmds.size() != expect.size()) {
+        cout << "num not correct, cmds's size [" << cmds.size() << "], args's size [" << args.size() << "], "
+             << "expext's size [" << expect.size() << "]\n";
+            return;
+    }
 
     if(cmds[0] == re::className()) {
         auto r = re::create(args[0]);
@@ -193,7 +200,7 @@ void test(const vector<string>& cmds, vector<vector<any>>& args, const vector<un
             return;
         }
     }
-    
+
     clock_t beg;
     clock_t end;
     string errStr;
@@ -215,7 +222,7 @@ void test(const vector<string>& cmds, vector<vector<any>>& args, const vector<un
             return;
         }
 
-        cout << "test case [" << TEST_CASE_NUM++ << "]: result => "
+        cout << "test case [" << test_num++ << "]: result => "
              << (cmpRes?"\033[32mok\033[0m":"\033[31mfialure\033[0m");
         cout << ", time use: " << (end-beg)*1.0/CLOCKS_PER_SEC*1000 << "ms";
         cout << (!cmpRes?errStr:"") << "\n";
