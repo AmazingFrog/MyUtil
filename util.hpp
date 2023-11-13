@@ -31,6 +31,10 @@ string toString(const Vec& p);
 
 // ---
 
+string toString(const string& s) {
+    return "\"" + s + "\"";
+}
+
 template<>
 string to_string<const char*>(const char* const& s) {
     return "\"" + string(s) + "\"";
@@ -99,10 +103,6 @@ string toString(const Vec& p) {
     s.pop_back();
     s.push_back(']');
     return s;
-}
-
-string toString(const string& s) {
-    return "\"" + s + "\"";
 }
 
 struct MultiArray {
