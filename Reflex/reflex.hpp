@@ -2,14 +2,17 @@
 #define _REFLEX_H_
 
 #include <any>
+#include <array>
 #include <string>
 #include <memory>
 #include <utility>
 #include <optional>
 #include <iostream>
 #include <functional>
+#include <string_view>
 #include <unordered_map>
 
+// 动态反射
 namespace shochu {
 using std::any;
 using std::tuple;
@@ -323,6 +326,90 @@ struct Reflex_##cls {       \
 };                      \
 static Reflex_##cls __reflex_##cls;
 
+}
+
+// 静态反射
+namespace shochu {
+namespace detail {
+#define tostring(...) #__VA_ARGS__
+
+template<char... c>
+struct const_string {
+    constexpr static int size{ sizeof...(c) };
+    constexpr static char str[size]{ c... };
+};
+
+template<char... c>
+struct count_field_number {
+    template<size_t i, size_t n>
+    constexpr static auto count() {
+        if constexpr (i == n) {
+            return 0;
+        }
+        else {
+            return (const_string<c...>::str[i] == ',') + count<i+1, n>();
+        }
+    }
+    constexpr static auto val{ 1 + count<0, sizeof...(c)>() };
+};
+
+template<size_t i, size_t n, typename F, char... c>
+constexpr auto str_2_field_arr(F fn) {
+    if constexpr (i == n) {
+        std::array<std::string_view, count_field_number<c...>::val> arr;
+        int idx{ 0 };
+        int first{ 0 };
+        for(int j{0};j<const_string<c...>::size;++j) {
+            if(const_string<c...>::str[j] == ',') {
+                arr[idx++] = { &const_string<c...>::str[first], &const_string<c...>::str[j] };
+                first = j + 1;
+            }
+        }
+        arr[idx] = { &const_string<c...>::str[first], &const_string<c...>::str[const_string<c...>::size] };
+        return arr;
+    }
+    else if constexpr (fn(i) == ' ') {
+        return str_2_field_arr<i+1, n, F, c...>(fn);
+    }
+    else {
+        return str_2_field_arr<i+1, n, F, c..., fn(i)>(fn);
+    }
+}
+
+#define expand1(...) __VA_ARGS__
+#define expand2(...) expand1(expand1(expand1(expand1(__VA_ARGS__))))
+#define expand3(...) expand2(expand2(expand2(expand2(__VA_ARGS__))))
+#define expand4(...) expand3(expand3(expand3(expand3(__VA_ARGS__))))
+#define  expand(...) expand4(expand4(expand4(expand4(__VA_ARGS__))))
+#define parens ()
+#define expand_type(T, ...) __VA_OPT__(expand(expand_type_helper(T, __VA_ARGS__)))
+#define expand_type_helper(T, f, ...) decltype(T::f) T::*, __VA_OPT__(expand_type_helper_again parens (T, __VA_ARGS__))
+#define expand_type_helper_again() expand_type_helper
+#define expand_var(T, ...) __VA_OPT__(expand(expand_var_helper(T, __VA_ARGS__)))
+#define expand_var_helper(T, f, ...) &T::f, __VA_OPT__(expand_var_helper_again parens (T, __VA_ARGS__))
+#define expand_var_helper_again() expand_var_helper
+
+#define build_field_arr(str) shochu::detail::str_2_field_arr<0, sizeof(str)>([](size_t i) constexpr { return str[i]; })
+} // detail
+
+#define make_meta_info(T, ...) \
+template<typename Ty> \
+struct meta_info_t { \
+    constexpr static auto field_name{ build_field_arr(#__VA_ARGS__) }; \
+    constexpr static tuple field_type{ expand_var(T, __VA_ARGS__) }; \
+    template<size_t i> \
+    using get_type = remove_cvref_t<remove_pointer_t<tuple_element_t<i, decltype(field_type)>>>; \
+    template<size_t i> \
+    constexpr string_view get_field_name() { return field_name[i]; }; \
+    template<size_t i, typename T> \
+    static void write(Ty& v, const T& val) { \
+        v.*(get<i>(field_type)) = val; \
+    } \
+    template<size_t i> \
+    static auto read(Ty& v) { \
+        return v.*(get<i>(field_type)); \
+    } \
+};
 }
 
 #endif // _REFLEX_H_
