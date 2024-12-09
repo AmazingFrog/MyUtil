@@ -392,21 +392,24 @@ constexpr auto str_2_field_arr(F fn) {
 #define build_field_arr(str) shochu::detail::str_2_field_arr<0, sizeof(str)>([](size_t i) constexpr { return str[i]; })
 } // detail
 
+template<typename T>
+struct meta_info_t { };
+
 #define make_meta_info(T, ...) \
-template<typename Ty> \
-struct meta_info_t { \
+template<> \
+struct shochu::meta_info_t<T> { \
     constexpr static auto field_name{ build_field_arr(#__VA_ARGS__) }; \
     constexpr static tuple field_type{ expand_var(T, __VA_ARGS__) }; \
     template<size_t i> \
     using get_type = remove_cvref_t<remove_pointer_t<tuple_element_t<i, decltype(field_type)>>>; \
     template<size_t i> \
-    constexpr string_view get_field_name() { return field_name[i]; }; \
+    constexpr static string_view get_field_name() { return field_name[i]; }; \
     template<size_t i, typename T> \
-    static void write(Ty& v, const T& val) { \
+    static void write(T& v, const T& val) { \
         v.*(get<i>(field_type)) = val; \
     } \
     template<size_t i> \
-    static auto read(Ty& v) { \
+    static auto read(const T& v) { \
         return v.*(get<i>(field_type)); \
     } \
 };
